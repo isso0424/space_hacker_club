@@ -91,6 +91,19 @@ struct Error<T> {
     error: Response<T>,
 }
 
+#[derive(Debug)]
+enum LogType {
+    Extract,
+    Sell,
+    Navigate,
+    Deliver,
+    Dock,
+}
+
+fn log(ship_name: &str, message: &str, log_type: LogType) {
+    println!("{}({:#?}): {}", ship_name, log_type, message)
+}
+
 async fn extract(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwest::Error> {
     loop {
         let res = client
@@ -110,15 +123,18 @@ async fn extract(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwes
         match res.status() {
             StatusCode::CREATED => {
                 let response: Response<ExtractResponse> = res.json().await.unwrap();
-                println!(
-                    "{}: extract succeed (material: {} amount: {})",
+                log(
                     ship_name,
-                    response.data.extraction.r#yield.symbol,
-                    response.data.extraction.r#yield.units
+                    &format!(
+                        "extract succeed (material: {} amount: {})",
+                        response.data.extraction.r#yield.symbol,
+                        response.data.extraction.r#yield.units
+                    ),
+                    LogType::Extract,
                 );
 
                 if response.data.cargo.units == response.data.cargo.capacity {
-                    println!("{}: extract completed", ship_name);
+                    log(ship_name, "extract completed", LogType::Extract);
                     break;
                 }
                 tokio::time::sleep(tokio::time::Duration::from_secs(
@@ -128,9 +144,13 @@ async fn extract(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwes
             }
             StatusCode::CONFLICT => {
                 let response: Error<ConflictError> = res.json().await.unwrap();
-                println!(
-                    "{}: cooldown exceeded (remaining {} secs)",
-                    ship_name, response.error.data.cooldown.remaining_seconds
+                log(
+                    ship_name,
+                    &format!(
+                        "cooldown exceeded (remaining {} secs)",
+                        response.error.data.cooldown.remaining_seconds
+                    ),
+                    LogType::Extract,
                 );
                 tokio::time::sleep(tokio::time::Duration::from_secs(
                     response.error.data.cooldown.remaining_seconds as u64,
@@ -141,10 +161,10 @@ async fn extract(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwes
                 break;
             }
             _ => {
-                println!(
-                    "{}: error occured in extraction ({})",
+                log(
                     ship_name,
-                    res.status()
+                    &format!("error occured in extraction ({})", res.status()),
+                    LogType::Extract,
                 );
                 tokio::time::sleep(tokio::time::Duration::from_secs(75)).await;
             }
@@ -188,7 +208,11 @@ async fn sell_item(
         return Ok(());
     }
     if item.symbol == "ALUMINUM_ORE" {
-        println!("{}: sold skipped ({})", ship_name, item.symbol);
+        log(
+            ship_name,
+            &format!("sold skipped ({})", item.symbol),
+            LogType::Sell,
+        );
         return Ok(());
     }
     let req = SellRequest {
@@ -207,27 +231,36 @@ async fn sell_item(
         .unwrap();
     if res.status() == StatusCode::CREATED {
         let j: Response<SellItemResponse> = res.json().await.unwrap();
-        println!(
-            "{}: sold succeed (material: {} unit: {} currentCredits: {}(+{}))",
+        log(
             ship_name,
-            j.data.transaction.trade_symbol,
-            j.data.transaction.units,
-            j.data.agent.credits,
-            j.data.transaction.total_price,
+            &format!(
+                "sold succeed (material: {} unit: {} currentCredits: {}(+{}))",
+                j.data.transaction.trade_symbol,
+                j.data.transaction.units,
+                j.data.agent.credits,
+                j.data.transaction.total_price,
+            ),
+            LogType::Sell,
         );
     } else {
-        println!("{}: error occured in selling ({})", ship_name, res.status());
+        log(
+            ship_name,
+            &format!("error occured in selling ({})", res.status()),
+            LogType::Sell,
+        );
     }
 
     Ok(())
 }
 
 #[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct NavigateRequest<'a> {
     waypoint_symbol: &'a str,
 }
 
 #[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct WayPoint {
     symbol: String,
     system_symbol: String,
@@ -243,6 +276,7 @@ struct Route {
 }
 
 #[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct Nav {
     system_symbol: String,
     waypoint_symbol: String,
@@ -255,12 +289,13 @@ struct NavigateResponse {
 }
 
 async fn refuel(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwest::Error> {
+    dock(&client, ship_name).await?;
     client
         .post(format!(
             "https://api.spacetraders.io/v2/my/ships/{}/refuel",
             ship_name,
         ))
-        .json("")
+        .header(reqwest::header::CONTENT_LENGTH, 0)
         .send()
         .await?;
 
@@ -272,10 +307,10 @@ async fn navigate(
     ship_name: &str,
     target: &str,
 ) -> Result<Nav, reqwest::Error> {
+    refuel(client, ship_name).await?;
     let req = NavigateRequest {
         waypoint_symbol: target,
     };
-    refuel(client, ship_name).await?;
     let res = client
         .post(format!(
             "https://api.spacetraders.io/v2/my/ships/{}/navigate",
@@ -286,18 +321,20 @@ async fn navigate(
         .await?;
 
     let r: Response<NavigateResponse> = res.json().await?;
-    println!("{:?}", r);
 
     let now = Utc::now();
     let raw_arrival = chrono::DateTime::parse_from_rfc3339(&r.data.nav.route.arrival).unwrap();
     let arrival = raw_arrival.with_timezone(&chrono::Utc);
     let duration = arrival - now;
 
-    println!(
-        "{}: navigate {} -> {}",
-        ship_name, r.data.nav.route.departure.symbol, r.data.nav.route.destination.symbol
+    log(
+        ship_name,
+        &format!(
+            "navigate {} -> {}",
+            r.data.nav.route.departure.symbol, r.data.nav.route.destination.symbol
+        ),
+        LogType::Navigate,
     );
-
     tokio::time::sleep(tokio::time::Duration::from_secs(
         duration.num_seconds().try_into().unwrap(),
     ))
@@ -312,16 +349,17 @@ async fn dock(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwest::
             "https://api.spacetraders.io/v2/my/ships/{}/dock",
             ship_name,
         ))
-        .json("")
+        .header(reqwest::header::CONTENT_LENGTH, 0)
         .send()
         .await?;
 
-    println!("{}: docked", ship_name);
+    log(ship_name, "docked", LogType::Dock);
 
     Ok(())
 }
 
 #[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 struct DeliverRequest<'a> {
     ship_symbol: &'a str,
     trade_symbol: &'a str,
@@ -335,8 +373,14 @@ async fn deliver(
     contract_id: &str,
     item: &Item,
 ) -> Result<(), reqwest::Error> {
+    log(
+        ship_name,
+        &format!("deliver {} to {}", item.symbol, target),
+        LogType::Deliver,
+    );
     let nav = navigate(&client, &ship_name, &target).await?;
 
+    dock(&client, ship_name).await?;
     let req = DeliverRequest {
         ship_symbol: ship_name,
         trade_symbol: &item.symbol,
@@ -350,20 +394,38 @@ async fn deliver(
         .json(&req)
         .send()
         .await?;
+    log(
+        ship_name,
+        &format!("delivered {}", item.symbol),
+        LogType::Deliver,
+    );
 
     navigate(&client, &ship_name, &nav.route.departure.symbol).await?;
     dock(&client, ship_name).await?;
 
+    log(ship_name, "deliver completed", LogType::Deliver);
+
     Ok(())
 }
 
-fn check_contract_material(cargo: &Cargo, material: &str) -> Option<Item> {
+fn check_contract_material(ship_name: &str, cargo: &Cargo, material: &str) -> Option<Item> {
     let target = cargo
         .inventory
         .clone()
         .into_iter()
         .find(|item| item.symbol == material);
     if let Some(item) = target {
+        let percentage = item.units as f32 / cargo.capacity as f32 * 100.0;
+
+        log(
+            ship_name,
+            &format!(
+                "progress to deliver {:3.1}% ({}/{})",
+                percentage, item.units, cargo.capacity
+            ),
+            LogType::Deliver,
+        );
+
         if item.units as f32 / cargo.capacity as f32 > 0.6 {
             Some(item)
         } else {
@@ -379,12 +441,11 @@ async fn loop_selling(client: &reqwest::Client, ship_name: &str) -> Result<(), r
         extract(&client, ship_name).await?;
 
         let cargo = fetch_cargo_status(&client, ship_name).await?;
-        println!("{}: fetch completed", ship_name);
 
-        println!("{}: sell items", ship_name);
+        log(ship_name, "sell items", LogType::Sell);
 
         let mut iter = cargo.inventory.clone().into_iter();
-        if let Some(item) = check_contract_material(&cargo, "ALUMINUM_ORE") {
+        if let Some(item) = check_contract_material(ship_name, &cargo, "ALUMINUM_ORE") {
             deliver(
                 &client,
                 ship_name,
@@ -401,7 +462,7 @@ async fn loop_selling(client: &reqwest::Client, ship_name: &str) -> Result<(), r
             }
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         }
-        println!("{}: sell completed", ship_name);
+        log(ship_name, "sell completed", LogType::Sell);
     }
 }
 
