@@ -1,4 +1,5 @@
 use chrono::Utc;
+use colored::Colorize;
 use http::StatusCode;
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -100,8 +101,52 @@ enum LogType {
     Dock,
 }
 
+impl std::fmt::Display for LogType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogType::Deliver => write!(f, "DELIVER"),
+            LogType::Sell => write!(f, "SELL"),
+            LogType::Dock => write!(f, "DOCK"),
+            LogType::Navigate => write!(f, "NAVIGATE"),
+            LogType::Extract => write!(f, "EXTRACT"),
+        }
+    }
+}
+
+impl LogType {
+    fn colored(&self) -> colored::ColoredString {
+        match self {
+            LogType::Deliver => "DELIVER".on_red(),
+            LogType::Sell => "SELL".on_green(),
+            LogType::Dock => "DOCK".on_yellow(),
+            LogType::Navigate => "NAVIGATE".on_blue(),
+            LogType::Extract => "EXTRACT".on_magenta(),
+        }
+    }
+}
+
+fn color_with_number(text: &str, num: i32) -> colored::ColoredString {
+    match num % 7 {
+        0 => text.white(),
+        1 => text.red(),
+        2 => text.green(),
+        3 => text.yellow(),
+        4 => text.blue(),
+        5 => text.magenta(),
+        6 => text.cyan(),
+        _ => text.red(),
+    }
+}
+
 fn log(ship_name: &str, message: &str, log_type: LogType) {
-    println!("{}({:#?}): {}", ship_name, log_type, message)
+    let (_, num) = ship_name.clone().split_once("-").unwrap();
+
+    println!(
+        "{}{} {}",
+        color_with_number(ship_name, num.to_string().parse::<i32>().unwrap()).bold(),
+        log_type.colored().bold(),
+        message
+    )
 }
 
 async fn extract(client: &reqwest::Client, ship_name: &str) -> Result<(), reqwest::Error> {
