@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -115,7 +116,9 @@ func main() {
   if err != nil {
     panic(err)
   }
-  for i := 0; i < 10; i++ {
+  r := flag.String("r", "FUEL", "resource")
+  flag.Parse()
+  for i := 0; i < 5; i++ {
     w := csv.NewWriter(f)
     q := url.Values{}
     q.Add("page", strconv.Itoa(i + 1))
@@ -131,7 +134,7 @@ func main() {
       rareMetal := 0
       mineral := 0
       iceCrystal := 0
-      exportsFuel := 0
+      resource := 0
       for _, point := range points.Data {
         isMarket := false
         for _, trait := range point.Traits {
@@ -158,12 +161,15 @@ func main() {
           fmt.Println("IMPORTS")
           for _, good := range market.Data.Imports {
             fmt.Printf("\t%s\n", good.Symbol)
+            if good.Symbol == *r {
+              resource--
+            }
           }
           fmt.Println("EXPORTS")
           for _, good := range market.Data.Exports {
             fmt.Printf("\t%s\n", good.Symbol)
-            if good.Symbol == "FUEL" {
-              exportsFuel++
+            if good.Symbol == *r {
+              resource++
             }
           }
           fmt.Println("EXCHANGES")
@@ -173,7 +179,7 @@ func main() {
           fmt.Println()
         }
       }
-      data := []string{system.Symbol, strconv.Itoa(system.X), strconv.Itoa(system.Y), strconv.Itoa(hasMarket), strconv.Itoa(commonMetal), strconv.Itoa(preciousMetal), strconv.Itoa(rareMetal), strconv.Itoa(mineral), strconv.Itoa(iceCrystal), strconv.Itoa(exportsFuel)}
+      data := []string{system.Symbol, strconv.Itoa(system.X), strconv.Itoa(system.Y), strconv.Itoa(hasMarket), strconv.Itoa(commonMetal), strconv.Itoa(preciousMetal), strconv.Itoa(rareMetal), strconv.Itoa(mineral), strconv.Itoa(iceCrystal), strconv.Itoa(resource)}
       err := w.Write(data)
       if err != nil {
         panic(err)
