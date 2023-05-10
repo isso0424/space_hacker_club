@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"time"
 )
@@ -109,7 +111,12 @@ func get[T any](url string, q url.Values) Response[T] {
 }
 
 func main() {
-  for i := 0; i < 2; i++ {
+  f, err := os.Create("systems.csv")
+  if err != nil {
+    panic(err)
+  }
+  for i := 0; i < 10; i++ {
+    w := csv.NewWriter(f)
     q := url.Values{}
     q.Add("page", strconv.Itoa(i + 1))
 
@@ -118,14 +125,30 @@ func main() {
     for _, system := range systems.Data {
       points := get[[]ListWaypointResponse](fmt.Sprintf("https://api.spacetraders.io/v2/systems/%s/waypoints", system.Symbol), url.Values{})
 
+      hasMarket := 0
+      commonMetal := 0
+      preciousMetal := 0
+      rareMetal := 0
+      mineral := 0
+      iceCrystal := 0
+      exportsFuel := 0
       for _, point := range points.Data {
         isMarket := false
         for _, trait := range point.Traits {
-          if trait.Symbol == "MARKETPLACE" {
-            isMarket = true
-          }
-          if trait.Symbol == "BLACK_MARKET" {
-            isMarket = true
+          switch trait.Symbol {
+            case "MARKETPLACE", "BLACK_MARKET":
+              hasMarket++
+              isMarket = true
+            case "COMMON_METAL_DEPOSITS":
+              commonMetal++
+            case "PRECIOUS_METAL_DEPOSITS":
+              preciousMetal++
+            case "RARE_METAL_DEPOSITS":
+              rareMetal++
+            case "MINERAL_DEPOSITS":
+              mineral++
+            case "ICE_CRYSTALS":
+              iceCrystal++
           }
         }
 
@@ -143,10 +166,19 @@ func main() {
           fmt.Println("EXCHANGES")
           for _, good := range market.Data.Exchange {
             fmt.Printf("\t%s\n", good.Symbol)
+            if good.Symbol == "FUEL" {
+              exportsFuel++
+            }
           }
           fmt.Println()
         }
       }
+      data := []string{system.Symbol, strconv.Itoa(system.X), strconv.Itoa(system.Y), strconv.Itoa(hasMarket), strconv.Itoa(commonMetal), strconv.Itoa(preciousMetal), strconv.Itoa(rareMetal), strconv.Itoa(mineral), strconv.Itoa(iceCrystal), strconv.Itoa(exportsFuel)}
+      err := w.Write(data)
+      if err != nil {
+        panic(err)
+      }
     }
+    w.Flush()
   }
 }
