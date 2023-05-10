@@ -471,7 +471,7 @@ fn check_contract_material(ship_name: &str, cargo: &Cargo, material: &str) -> Op
             LogType::Deliver,
         );
 
-        if item.units as f32 / cargo.capacity as f32 > 0.6 {
+        if item.units as f32 / cargo.capacity as f32 >= 0.75 {
             Some(item)
         } else {
             None
