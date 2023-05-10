@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+  _ "github.com/joho/godotenv/autoload"
 )
 
 type ListWaypointResponse struct {
@@ -80,7 +81,7 @@ func get[T any](url string, q url.Values) Response[T] {
     panic(err)
   }
 
-  req.Header.Add("Authorization", "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZGVudGlmaWVyIjoiU09JRVMiLCJpYXQiOjE2ODM1OTgwMzQsInN1YiI6ImFnZW50LXRva2VuIn0.GifA8eeFcatu05P6TAetT9SzuaBX-37eeFwYN26-NTHc1eobzsah6YBmYm9QEmfVpb5GBWNxv80Pz7C6XmUxWVNXKKeQoC5C_sZRIW-WlWQMa6Ek1kSYy6-PDwHnFBdbP4UbG3_KJmWIUZZZrmqqGaQr72XCTKxFipvWGAvBGx9ogtazKLo0gvCRvFVM6Egs_Em8MgZqog0ixeRXTATjgEHD9QW_OWsb-X2bEm7Bqut2l27cm3QWFHXw8ZXhTaxqODYCg2XCN90owG8TlLEL7thcfhiOL9n2DL12F3tU8_YqdZ6XBgQy4ujAWO_y5N1RrL4MEuCQw1s83vVbYlljt3UVhnf6sn47thmZhGEjk4xXa8jq_X2fa2LTTuYc2grjCYACN_VRg9Lfc_w4CpWM4aF0wyYnmhEGccjpg7ywkvqhzswYQufB-z83uqLRPm--wn4DJcW6dCrLzEf6tdTCCcgfA0O3F-ISIh9j-6H7S9x_gx_gnWO73bGIK7QUVvQe")
+  req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", os.Getenv("API_KEY")))
   que := req.URL.Query()
   for key, values := range q {
     for _, value := range values {
