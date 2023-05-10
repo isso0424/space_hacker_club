@@ -162,13 +162,13 @@ func main() {
           fmt.Println("EXPORTS")
           for _, good := range market.Data.Exports {
             fmt.Printf("\t%s\n", good.Symbol)
+            if good.Symbol == "FUEL" {
+              exportsFuel++
+            }
           }
           fmt.Println("EXCHANGES")
           for _, good := range market.Data.Exchange {
             fmt.Printf("\t%s\n", good.Symbol)
-            if good.Symbol == "FUEL" {
-              exportsFuel++
-            }
           }
           fmt.Println()
         }
